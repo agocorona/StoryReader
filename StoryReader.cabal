@@ -15,7 +15,8 @@ executable StoryReader
                    TCache -any, Workflow -any, base -any, bytestring -any,
                    containers -any, directory -any, html -any, mtl -any,
                    utf8-string -any, SMTPClient -any, old-time -any,
-                   network -any
+                   network -any, vector -any, text -any, parsec -any,
+                   old-time -any
     main-is: StoryReader.hs
     buildable: True
     hs-source-dirs: src
