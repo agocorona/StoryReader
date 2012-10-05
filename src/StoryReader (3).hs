@@ -63,12 +63,6 @@ import Debug.Trace
 
 
 
-onNothing io onerr= do
-  my <-  io
-  case my of
-   Just y -> return y
-   Nothing -> onerr
-
 justify=  flip fromMaybe
 
 adminUser= "admin"
@@ -407,7 +401,7 @@ parpendicular= "Parpendicular Universes"
 --listStories :: [(String,Int)] -> View Html IO  String
 listStories  stories=
    h2 << "Choose a story"  ++>
-   wconcat [p <<< wlink s (bold << s) | (s, _) <- stories]
+   msum [p <<< wlink s (bold << s) | (s, _) <- stories]
 
 listStories1 stories=
    h1 << parpendicular ++>

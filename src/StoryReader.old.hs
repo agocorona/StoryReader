@@ -3,21 +3,21 @@
             -XScopedTypeVariables
             -XFlexibleInstances
             -XRecordWildCards
-
             #-}
 {-
 
-getCookie
-falla backreturn cuando acaba el tiempo
-ofrecer envio por correo cuando acaba el tiempo
-Login elegir recordar o no y logout
-se pierde un caracter al final de el papel de Rey
 
+limitar la navegación hacia adelante por tiempo (probar)
+cambiar cookies a Max_Time x
+login de admin con letrero y sin registro x
+si se ha borrado la defaultStory, se para
+se pierde un caracter al final de el papel de Rey
+byteString
 -}
 
 module  Main where
 import Prelude hiding (writeFile)
-import MFlow.Wai.XHtml.All hiding (many)
+import MFlow.Hack.XHtml.All hiding (many)
 import Data.Typeable
 import Control.Monad(when)
 import Control.Monad.Trans
@@ -31,15 +31,21 @@ import Data.Char
 import System.Time
 import Control.Concurrent
 
-import Data.ByteString.Lazy.Char8 as B(ByteString,take,pack,append, unpack,snoc,empty)
+import Data.ByteString.Lazy.Char8 as B(take,pack, unpack,snoc,empty)
+
 import Util.Mail
+
+
 import Data.Monoid
 
 import Data.TCache
+import Data.TCache.DefaultPersistence
 import Data.TCache.Defs
 import Data.TCache.Memoization
 import Data.TCache.IndexQuery
-
+--import Data.TCache.Memoization
+--import Data.RefSerialize hiding((<|>),empty)
+--import qualified Data.RefSerialize  as R ((<|>),empty,try)
 import Text.Parsec  hiding ((<|>))
 import qualified Text.Parsec as P (try,(<|>))
 
@@ -57,8 +63,6 @@ import Debug.Trace
 
 
 
-
-
 justify=  flip fromMaybe
 
 adminUser= "admin"
@@ -67,17 +71,33 @@ adminUser= "admin"
 
 
 main= do
-   syncWrite SyncManual
    index userName
-   setAdminUser adminUser adminUser
+   userRegister adminUser adminUser
+   syncWrite SyncManual
    maybeColdRebuildStories
+
+   putStrLn $ "in the browser go to: http://localhost"
    addAdminWF
    addFileServerWF
    addMessageFlows messageFlows
-   run 8080  waiMessageFlow
-   adminLoop
+   run 80  hackMessageFlow
+   loop
+  `E.catch` (\(e:: E.SomeException) ->do
+
+                      ssyncCache
+                      error $ "\nException: "++ show e)
    where
-   messageFlows=  [("" , transient $ runFlow showStories)
+   ssyncCache= putStr "sync..." >> syncCache >> putStrLn "done"
+   loop= do
+       op <- getLine
+       case op of
+        "sync" -> ssyncCache >>  loop
+        "flush" -> atomically flushAll >> putStrLn "flushed cache" >> loop
+        "end"  -> ssyncCache >> putStrLn "bye" >> return()
+        "abrt" -> return()
+        _ -> loop
+
+   messageFlows=  [("noscript" , transient $ runFlow showStories)
                   ,("admin"    , transient $ runFlow admin)
                   ,("mail"     , transient $ runFlow mail)]
 
@@ -87,6 +107,8 @@ type Size= Int
 
 
 type Stories= [(Name,Size)]
+
+
 
 --
 --instance Serialize Stories where
@@ -113,19 +135,11 @@ rstories= getDBRef keyStories
 
 chunkSize= 1000 :: Int
 
-appheader :: String -> ByteString -> ByteString
-appheader title c =  bhtml []
-               .<<. (header
+appheader title c =  thehtml
+               << ((header
                    << (thetitle << title +++
-                       meta ! [name "Keywords",content "parpendicular, sci-fi"])) `append`
---                       <link rel="shortcut icon" href="/favicon.ico" />
-
-                  bbody [("style", "margin-left:5%;margin-right:5%")] c
-
-powered= thediv ![thestyle "position:absolute;bottom:0:right:0"]
-         << toHtml "Powered by"
-        +++ toHtml (hotlink "http://hackage.haskell.org/package/MFlow" (toHtml "MFlow"))
-        +++ toHtml (hotlink "http:://www.haskell.org" (toHtml "Haskell"))
+                       meta ! [name "Keywords",content "parpendicular, sci-fi"])) +++
+                  body ! [thestyle "margin-left:5%;margin-right:5%"]<<  c)
 
 
 maybeColdRebuildStories=   do
@@ -162,18 +176,6 @@ userFormOrName= userwidget `wmodify` f
            then return (felem, Nothing)
            else return([fromString us],  Just us)
 
---userFormOrName= View $ do
---  felem@(FormElm f mu) <- runView userwidget
---  case mu of
---    Just u -> return $ FormElm [fromString u] mu
---    Nothing -> do
---     mus <- getEnv cookieuser
---     case mus of
---       Just us -> return $ FormElm [fromString us] mus
---       Nothing -> return felem
-
-
-
 data Story= Story{stname :: String, blocks :: V.Vector T.Text} deriving Typeable
 
 instance Indexable Story where
@@ -197,7 +199,7 @@ instance Serializable Story where
     pstory = P.try(separatorp)  <|> nseparatorp
 
 
-    scan= scan1 0 B.empty >>= return .  E.decodeUtf8With (\_ _ -> return  '-')
+    scan= scan1 0 B.empty >>= return .  E.decodeUtf8
     scan1 2000 _= fail ""
     scan1 n s=
         (symbol1 separator >> return s)     P.<|>
@@ -218,19 +220,58 @@ instance Serializable Story where
 
     takep n= takep1 n []
 
-    takep1 0 cs=do
-        s <- manyTill anyChar (char '\n')
-        return . E.decodeUtf8 . B.pack $ reverse cs ++ s
+    takep1 0 cs= return . E.decodeUtf8 . B.pack $ reverse cs
     takep1 n cs= do
            c <-   anyChar
            takep1 (n-1) (c:cs) P.<|> return ( E.decodeUtf8 . B.pack  $ reverse cs)
 
     symbol1 s= mapM char s
 
+--
+--instance Serialize Story where
+--  showp= error " showp [Story] not implemented"
+--  readp = do
+--    sep <- detectSeparator
+--    if sep then separatorp !> "separator"
+--            else nseparatorp !> "nonserparator"
+--    where
+--    detectSeparator= R.try (detectSeparator1 0) R.<|> return False
+--
+--    detectSeparator1 200= return False
+--    detectSeparator1 n=
+--              (symbol1 separator >> return True) R.<|>
+--              (anyChar >> detectSeparator1 (n+1))
+--    separatorp= return Story `ap` getName
+--                            `ap`  ( return V.fromList
+--                               `ap` sepBy (return T.pack `ap` many anyChar) (symbol1 separator))
+--    getName=  manyTill anyChar (char '\n')
+--    nseparatorp= do
+--       n <- getName
+--       ch <-  many $ takep chunkSize
+--
+--       return . Story n $ V.fromList ch
+--
+--    takep n= takep1 n []
+--
+--    takep1 0 cs= return . T.pack $ reverse cs
+--    takep1 n cs= do
+--       c <- anyChar
+--       takep1 (n-1) (c:cs) R.<|> return ( T.pack $ reverse (c:cs))
+--
+--    symbol1 s= mapM char s
+--
+--
+--    --takep1 n= replicateM n anyChar >>= return . T.pack
+--
+--
+--     return Story `ap` getName `ap` ( return V.fromList `ap` many( return E.decodeUtf8 `ap` takep chunkSize))
+
+
+
 
 data GeneralConf=
      G{ gblockreceive :: Int
-      , gTimeBetweenBlocks :: Integer}
+      , gtimenetweenblocks :: Integer}
       deriving (Read, Show, Typeable)
 
 config0= G 4 1
@@ -266,8 +307,20 @@ instance Indexable UserContext where
 
 data Navigation= Seek Int | Menu | ByMail deriving (Typeable, Read, Show)
 
-
+--getUserContext= atomically $  do
+--  stor <- readDBRef rstories  `onNothing` error "not found stories"
+--  let cont = UC "" $ M.fromList [(n,userStorycontext0{sname=n}) | n <- M.keys stor]
+--  newDBRef cont
 daySecs= 24*60*60 :: Integer
+
+newDBRef1 ::   (IResource a, Typeable a) => a -> STM  (DBRef a)
+newDBRef1 x = do
+  let ref= getDBRef $! keyResource x                -- !> "getDBRef"
+
+  mr <- readDBRef  ref                              -- !> "readDBRef"
+  case mr of
+    Nothing -> writeDBRef ref x >> return ref       -- !> " write"
+    Just r -> return ref                            -- !> " non write"
 
 
 --showStories ::  FlowM Html (Workflow IO) ()
@@ -281,13 +334,13 @@ showStories   = do
 
   showStories1  stories =  do
      user <- getCurrentUser                            -- !> "getCurrentUser"
-     rUContext<- ( atomic $  newDBRef  $ UC user Nothing . M.fromList . map (\(n,s) -> (n,userStorycontext0{sname=n,ssize=s, ref= getDBRef n})) $ stories)
+     rUContext<- ( atomic $  newDBRef1  $ UC user Nothing . M.fromList . map (\(n,s) -> (n,userStorycontext0{sname=n,ssize=s, ref= getDBRef n})) $ stories)
      uc@UC{..} <- atomic $ readDBRef rUContext `onNothing` error "nor found user context "
      back <- goingBack
      story <- case (currentStory, back) of
           (Just s, False) -> return s
           _ -> do
-            s <- ask $  userFormOrName .**>.  cachedWidget "menu" 0 (listStories1 stories)
+            s <- ask $  userFormOrName **> {- cachedWidget "menu" 0-} (listStories1 stories)
             atomic $ writeDBRef rUContext  $ uc{currentStory=Just s}
             return s
 
@@ -299,19 +352,20 @@ showStories   = do
      G ntimes t <- atomic $ readDBRef rconf `onNothing` return config0
      TOD tnow _ <- liftIO $ getClockTime
      let context@USC{..}= M.lookup story mapcontext `justify` error ("context not found for "++ story)
-     user <- getCurrentUser
-     if  user /= adminUser && readToday >= ntimes -- && lastAccess + t * daySecs < tnow
+     if lastAccess + t * daySecs  < tnow && readToday >= ntimes
       then do
-        ask $   (p << "sorry, you have completed the Story for today. Try tomorrow if you like or read other stories" +++
-                 p << "You can also can receive it by mail.  If you are registered, Click \"receive by mail\" in the next page")
-           .++>. wlink () (bold << "press here")
-        atomic $ writeDBRef rUContext  uc{currentStory= Nothing}
-        breturn ()
+       ask $ p << "sorry, you have completed the Story for today. Try tomorrow if you like or read other stories"
+           ++> wlink () (bold << "press here")
+--       when (readToday >= ntimes) $
+       breturn ()
       else do
+        logged <- isLogged
 
-        r <- ask $       topForm sname  seek  ssize
-                 .**>.   cachedWidget (sname  ++ show seek ) 0
-                                      (showBuffer context)
+--        (chunk,seekit,size)  <- getChunk context
+--        key <- addrStr chunk
+        r <- ask $   topForm sname  seek  ssize
+                 **>  -- cachedWidget (sname  ++ show seek ) 0
+                                   (showBuffer logged context)
 
         case r of
             Menu       -> do
@@ -324,15 +378,13 @@ showStories   = do
                 atomic $ writeDBRef rUContext  uc{ucStories= M.insert story newc mapcontext}
                 navigate rUContext story
 
-  topForm title seek size= do
-         logged <- isLogged
-         let mailattrs = if  logged then [] else disableAttrs
+  topForm title seek size=
          table ! [thestyle "width:100%"]
           <<< tr
-            <<< (td <<< userFormOrName **>
-                 td  ! [align "center"] <<< fromString (if size==0 then "0" else show (seek * 100 `div` size) ++ "%")
-                 ++> (td  <<< wlink ByMail (thespan << "receive it by mail") <! mailattrs
-                 <++ td  ! [align "right"] << title))
+            <<< (td <<< userFormOrName
+                <++ concatHtml
+                  [td  ! [align "center"] << (if size==0 then "0" else show (seek * 100 `div` size) ++ "%")
+                  ,td  ! [align "right"] << title])
 
 
 getChunk  context  = do
@@ -341,7 +393,14 @@ getChunk  context  = do
            chunk= chunks V.! seekit
        return (chunk , seekit, fromIntegral $ V.length chunks)
 
-
+-- do
+--  Just stories <- atomically $ readDBRef rstories
+--  let mh =  M.lookup (sname context) stories
+--  case mh of
+--    Nothing -> return (["This Story not longer exist"],0,0)
+--    Just (_,h) -> do
+--      hSeek h  AbsoluteSeek $ seek context
+--      readLines h (seek context)
 
 parpendicular= "Parpendicular Universes"
 --listStories :: [(String,Int)] -> View Html IO  String
@@ -349,21 +408,45 @@ listStories  stories=
    h2 << "Choose a story"  ++>
    firstOf [p <<< wlink s (bold << s) | (s, _) <- stories]
 
-
 listStories1 stories=
    h1 << parpendicular ++>
    h3 << "Infotainment for a galaxy in crisis" ++>
    listStories  stories
 
+readLines h seek= readLines1     [] 0
+  where
+  readLines1 buf len =do
+    mr <- hGetLineExc h
+    size<- hFileSize h
+    case mr of
+       Nothing -> return (buf,seek,size)
+       Just line  -> do
+        let len'= len + length line
+            buf'= buf++ [line]
+        if fromIntegral len' >= chunkSize + 80
+           then do
+             let buf''= if seek >0 then dropWhile(not . isSpace) (head buf'):tail buf'
+                                   else buf'
+             return (buf'',seek, size)
+           else readLines1 buf' len'
+
+hGetLineExc h= (do
+     x <- hGetLine h
+     return $ Just x)
+    `E.catch` (\(e :: IOError) -> do
+        when( not $ isEOFError e) $ print e
+        return Nothing)
 
 
-disableAttrs = [("style","visibility:hidden")]
 
-showBuffer  context =
+--showBuffer :: (MonadIO m, Functor m)
+--           =>  Integer ->  Int
+--           -> [String] -> View Html m Integer
+showBuffer logged context =
 
    let
      (buf,seekit,size)  = execute $ getChunk context
-
+     disableAttrs = [("style","visibility:hidden")]
 
      seekbn   = let x= seekit - 1
                 in if x  >= 0 then x else seekit
@@ -384,17 +467,19 @@ showBuffer  context =
                            else link
 
      otherLink = wlink Menu ( bold <<"Other stories")
+     mailattrs = if not logged then disableAttrs else []
+     byMail    = wlink ByMail (thespan << "receive it by mail") <! mailattrs
      centered  = [align "center"]
 
      links     = table   ! [thestyle "width:100%"]
                  <<< tr  <<<(td            <<<  bwlink
                          <|> td ! centered <<< otherLink
---                         <|> td ! centered <<< byMail
+                         <|> td ! centered <<< byMail
                          <|> td ! centered <<< fwlink)
 
      lenbuf2    = T.length buf `div` 2
      (buf1,buf2)= T.splitAt lenbuf2  buf
---     disablemail= if logged then [("style","text-decoration: none;color:black")] else []
+     disablemail= if logged then [("style","text-decoration: none;color:black")] else []
      wrap buf= thespan ! [thestyle "word-wrap:break-word"]
                     << (thespan << (linesToHtml . lines $ T.unpack buf))
 
@@ -432,14 +517,14 @@ showMailBuff context chunk user=
      hotlink (myURL++ "/mail?"++user) << (thespan << "confirm your mail")
 
 setMail ref context=  do
-  mail <- ask . normalize $ p << "You will receive just five blocks unless you ask for more"
+  mail <- ask $ p << "You will receive just five blocks unless you ask for more"
               ++> getString (Just "Enter your mail")
   (chunk,seekit,size)  <- liftIO $ getChunk context
   UC{..} <- atomic $ readDBRef ref     `onNothing` error "setMail: user context not found"
   let xhtml = showMailBuff context chunk ucName
   let message = showHtml xhtml
   liftIO $ sendMail "ptueba" "agocorona@gmail.com" "title" message
-  ask $ thespan << "The mail has been sent to you" .++>. wlink "" ( thespan << "click here")
+  ask $ thespan << "The mail has been sent to you" ++> wlink "" ( thespan << "click here")
   let newc = context{byMail= Just mail, confirmed= False, seek= seek context + size}
   atomic $ do
     uc@UC{..} <- readDBRef ref `onNothing` error "showStories1: not found user context"
@@ -452,7 +537,7 @@ mail= do
      let ref= getDBRef . key $ UC user undefined undefined
      uc@UC{..} <- atomic $ readDBRef ref        `onNothing` error "showStories1: not found user context"
      let story = currentStory `justify` error "no current story"
-     let context =  M.lookup story ucStories `justify` userStorycontext0
+     let context =  M.lookup story ucStories    `justify` userStorycontext0
 
      (chunk,seekit,size) <- liftIO $ getChunk context
      atomic $ do
@@ -462,7 +547,7 @@ mail= do
      let xhtml = showMailBuff context chunk user
      let message = showHtml xhtml
      liftIO $ sendMail "ptueba" "agocorona@gmail.com" "title" message
-     ask . normalize $ thespan << "The mail has been sent to you" ++> wlink "" ( thespan << "click here")
+     ask $ thespan << "The mail has been sent to you" ++> wlink "" ( thespan << "click here")
      showStories
 
 
@@ -476,22 +561,22 @@ admin= do
          delrelstr= "Delete a Story"
          gnconfstr= "Configuration"
 
-     setHeader $ \c -> appheader admintext  ( btag "h1" [("align", "center")] (pack admintext) `append` c)
+     setHeader $ \c -> appheader admintext  ( h1 ![align "center"] << admintext +++ c)
      setTimeouts 0 0
+     clearEnv
+     u <- getUser (Just "admin") $ p << bold << "Please login as Administrator" ++> userLogin
 
-     u <- getUser (Just "admin") . normalize $ p << bold << "Please login as Administrator" ++> userLogin
 
-
-     op <- ask . normalize $   p <<< wlink "edit" (p << adcontstr)
-                <|> p <<< wlink "add"  (p << addrelstr)
-                <|> p <<< wlink "del"  (p << delrelstr)
+     op <- ask   $  p <<< wlink "edit" (p << adcontstr)
+                <|> p <<< wlink "add" (p << addrelstr)
+                <|> p <<< wlink "del" (p << delrelstr)
                 <|> p <<< wlink "conf" (p << gnconfstr)
 
 
      case op of
       "edit" -> do
          stories <- atomic ( readDBRef rstories) `onNothing` error "not found stories"
-         r <- ask $ homelink .|+|. h3 ! [align "center"] << adcontstr .++>.  listStories stories
+         r <- ask $ homelink |+| h3 ! [align "center"] << adcontstr ++>  listStories stories
          case r of
           (Just _,_)  -> admin
           (_,Just hist)-> do
@@ -499,7 +584,7 @@ admin= do
            Story _ content <- atomic (readDBRef ref) `onNothing` (error $ "not found: "++ hist)
 
            mr <- ask $  homelink
-                    .|+|. wform ( h3 ! [align "center"] << adcontstr
+                    |+| wform ( h3 ! [align "center"] << adcontstr
                                ++> getMultilineText (concatMap T.unpack $ V.toList content) ![rows "30",thestyle "width:80%"]
                                <* br ++> submitButton "submit")
                       -- <+> br +> homelink
@@ -511,9 +596,9 @@ admin= do
             (Just _,_) -> admin
 
       "add" -> do
-         r <- ask $ homelink .|+|. wform ( h3 << addrelstr ++> br ++>
+         r <- ask $ homelink |+| wform ( h3 << addrelstr ++> br ++>
                           ((,) <$> p <<< getString (Just "Name of the Story")
-                               <*> p <<< getMultilineText  "Enter the content" ![rows "30",  thestyle "width:80%"]
+                               <*> p <<< getMultilineText "Enter the content" ![rows "30",  thestyle "width:80%"]
                                <*  p <<< submitButton "submit"))
 
          case r of
@@ -528,15 +613,15 @@ admin= do
 
       "del" -> do
            stories <- atomic $ readDBRef rstories `onNothing` error "not foun stories"
-           hist  <- ask $ normalize $ listStories  stories
+           hist  <- ask $ listStories  stories
            liftIO $ do
              atomically . writeDBRef rstories $ filter (\r-> hist /= fst r ) stories
              removeFile $ storiesPath ++ hist
       "conf" -> do
            G{..} <- atomic $  readDBRef rconf `onNothing` (writeDBRef rconf config0 >> return config0)
            r <- ask $ homelink
-                   .|+|. (G <$> br ++> fromString "Number of blocks to receive " ++> getInt (Just gblockreceive)
-                          <*> br ++> fromString "Time between receives" ++> getInteger (Just gTimeBetweenBlocks))
+                   |+| (G <$> br ++> fromString "Number of blocks to receive " ++> getInt (Just gblockreceive)
+                          <*> br ++> fromString "Time between receives" ++> getInteger (Just gtimenetweenblocks))
                           <*  p <<< submitButton "submit"
            case r of
              (Just _,_) -> admin
@@ -551,4 +636,13 @@ admin= do
   add k v (Just stories)= M.insert k (strip k,v) stories
   add k v Nothing =  M.singleton k (strip k,v)
   strip k= k \\ "\\/:*?\"<>|"
+--  hGetContents1 h = hGetContents2 []
+--   where
+--   hGetContents2 str  = do
+--      hSeek h  AbsoluteSeek 0
+--      ml <- hGetLineExc h
+--      case ml of
+--       Nothing -> return str
+--       Just l  -> hGetContents2 $ str++l
+
 
