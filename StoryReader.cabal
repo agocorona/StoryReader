@@ -4,20 +4,23 @@ cabal-version: >=1.2
 build-type: Simple
 license: AllRightsReserved
 license-file: ""
-package-url: https://github.com/agocorona/StoryReader
-synopsis: Story reader for parpendicular universes
-description:
-category: Web application
 data-dir: ""
+extra-source-files: ""
 
 executable StoryReader
-    build-depends: MFlow -any, QuickCheck -any, RefSerialize -any,
-                   TCache -any, Workflow -any, base -any, bytestring -any,
-                   containers -any, directory -any, html -any, mtl -any,
-                   utf8-string -any, SMTPClient -any, old-time -any,
-                   network -any, vector -any, text -any, parsec -any,
-                   old-time -any
+    build-depends: text -any, vector -any, directory -any, parsec -any,
+                   TCache -any, base -any, old-time -any, containers -any,
+                   network -any, smtp-mail -any, mime-mail -any, bytestring -any, mtl -any,
+                   utf8-string -any, MFlow -any, blaze-html -any
     main-is: StoryReader.hs
     buildable: True
     hs-source-dirs: src
+    other-modules:
 
+test-suite test-StoryReader
+    build-depends: base -any
+    type: exitcode-stdio-1.0
+    main-is: StoryReader.hs
+    buildable: True
+    cpp-options: -DMAIN_FUNCTION=testMain
+    hs-source-dirs: src

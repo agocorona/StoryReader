@@ -27,7 +27,7 @@ import Data.IORef
 
 
 myDomain = "parpendicularuniverses.com"
-smtpHost = "localhost"    -- <-- Your SMTP server here
+smtpHost = "smtp.strato.com"    -- <-- Your SMTP server here
 
  -- This will send the author an email.  I don't mind!
 sendMail username usermail title content= withSocketsDo $  do
@@ -41,9 +41,9 @@ sendMail username usermail title content= withSocketsDo $  do
              ]
              content
      addrs <-  getAddrInfo Nothing (Just smtpHost) Nothing
-     let addr = addrAddress (addrs !! 1)
+     let addr = addrAddress (addrs !! 0)
      let sockAddr= case addr of
-                       SockAddrInet _ hostAddr -> SockAddrInet (fromIntegral 25) hostAddr
+                       SockAddrInet _ hostAddr -> SockAddrInet (fromIntegral 587) hostAddr
                        SockAddrInet6 pn finfo hostAddr scope -> SockAddrInet6 (fromIntegral 25) finfo hostAddr scope
                        other -> error $ show other
 
