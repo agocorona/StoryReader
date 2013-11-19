@@ -56,6 +56,7 @@ import Data.Char(isSpace)
 import qualified Control.Exception as E
 import qualified Data.Vector as V
 import qualified Data.Text.Lazy as T
+import qualified Data.Text.IO as TIO
 import qualified Data.Text.Lazy.Encoding as E
 import Control.Monad
 import System.Environment
@@ -98,6 +99,10 @@ instance Indexable Stories where
   key= const keyStories
   defPath _= storiesPath
 
+instance Serializable Stories where
+  serialize = B.pack . show
+  deserialize= read . B.unpack
+
 storiesPath= "Stories/"
 
 keyStories= "Stories"
@@ -107,45 +112,48 @@ rstories= getDBRef keyStories
 
 chunkSize= 1000 :: Int
 
-appheader :: String -> B.ByteString -> B.ByteString
+appheader :: String -> Html -> Html
 appheader titl c =
-         bhtml []
-             $ (toByteString (El.head
-                   << (El.title << titl
-                   <> meta ! name  "Keywords" ! content "parpendicular, sci-fi"
-                   <> meta ! name "viewport" ! content "width=device-width,initial-scale=1"
-                   <> meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
-                   <> link ! rel "stylesheet" ! type_ "text/css" ! href   "http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.css"
+         html $ do
+             El.head $ do
+                   El.title << titl
+                   meta ! name  "Keywords" ! content "parpendicular, sci-fi"
+                   meta ! name "viewport" ! content "width=device-width,initial-scale=1"
+                   meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
+                   link ! rel "stylesheet" ! type_ "text/css" ! href   "http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.css"
 --                   <> link ! rel "stylesheet" ! type_ "text/css" ! href  (fromString . linkFile $ "jquery.mobile.pagination.css")
-                   <> (script ! src "http://code.jquery.com/jquery-1.8.2.min.js"  $ mempty)
-                   <> (script ! src "http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.js" $ mempty)
---                    <> (script ! src (fromString . linkFile $ "jquery.mobile.pagination.js") $ mempty)
-              ))
+                   script ! src "http://code.jquery.com/jquery-1.8.2.min.js"  $ mempty
+                   script ! src "http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.js" $ mempty
+--                 script ! src (fromString . linkFile $ "jquery.mobile.pagination.js") $ mempty
 
-              <>
+
+
 --                       <link rel="shortcut icon" href="favicon.ico" />
 
-                  (bbody [("style", "margin-left:5%;margin-right:5%")]
-                     $ (btag "div" []
-                       $ (c <> bottom))))
+             body ! At.style "margin-left:5%;margin-right:5%" $ do
+                     El.div $ do
+                              c
+                              bottom
 
 
-bottom =
- btag "div" [("style", "float:right")]
-    $ (btag "br" [] mempty <> monitor <> powered)
+bottom = El.div ! At.style "float:right" $ do
+                 br
+                 monitor
+                 powered
 
-monitor=  btag "a" [("href", "http://www.monitor.us")]
-     $ btag "img"
-         [("width", "50"), ("height", "25")
-         ,("src", "http://images.monitor.us/monbadges120-40.png")
-         ,("title","Monitor.Us - Free website, server & network monitoring tool")
-         ,("border","0")] $ B.empty
+monitor=  a ! href "http://www.monitor.us" $
+     img
+         ! width" 50" ! height "25"
+         ! src "http://images.monitor.us/monbadges120-40.png"
+         ! At.title "Monitor.Us - Free website, server & network monitoring tool"
+         ! At.style "border:0"
 
 
-powered= btag "a" [("href", "http://haskell.org")]
-   $ btag "img"
-         [("width", "50"), ("height", "25")
-         ,("src",  "haskell-logo-revolution.png")] $ B.empty
+
+powered=  a ! href "http://haskell.org" $
+       img ! width "50" ! height "25"
+           ! src "haskell-logo-revolution.png"
+
 
 
 maybeColdRebuildStories=   do
@@ -254,6 +262,10 @@ data GeneralConf=
       , gTimeBetweenBlocks :: Integer}
       deriving (Read, Show, Typeable)
 
+instance Serializable GeneralConf where
+  serialize = B.pack . show
+  deserialize= read . B.unpack
+
 config0= G 4 1
 rconf= getDBRef $ key config0
 
@@ -280,19 +292,24 @@ userStorycontext0= USC (error "name nof defined in story") Nothing False 0 0   0
 instance Indexable UserContext where
   key (UC n _ _)= "UC"++ n
 
+instance Serializable UserContext where
+  serialize = B.pack . show
+  deserialize= read . B.unpack
+
 data Navigation= Seek Int | Menu | ByMail deriving (Typeable, Read, Show)
 
 
 daySecs= 24*60*60 :: Integer
 
 
-loginAsAdmin=    getUser (Just "admin") . normalize
+loginAsAdmin=    getUser (Just adminUser)
                       $    El.div ! customAttribute "data-role" "page"
                       <<<  p << b  "Please login as Administrator"
-                      ++>  wform userLogin <! [("data-ajax","false")]
+                      ++>  wform userLogin  <! [("data-ajax","false")]
 
 readStories= atomic $ readDBRef rstories `onNothing` error "showStories: stories not found"
---showStories ::  FlowM Html (Workflow IO) ()
+
+showStories ::  FlowM Html IO ()
 showStories   = do
   setHeader $ appheader parpendicular
   setTimeouts 200 0
@@ -300,7 +317,7 @@ showStories   = do
 
   showStories1
   where
-
+  showStories1 :: FlowM Html IO ()
   showStories1   =  do
 
      stories <- readStories
@@ -311,7 +328,7 @@ showStories   = do
      story <- case (currentStory, back) of
           (Just s, False) -> return s
           _ -> do
-            s <- ask $   linkOrUser user ++> maybeLogout **> listStories1 stories .<**.  userFormOrName1
+            s <- ask $   linkOrUser user ++> maybeLogout **> listStories1 stories <**  userFormOrName1
             atomic $ writeDBRef rUContext  $ uc{currentStory=Just s}
             return s
 
@@ -343,8 +360,8 @@ showStories   = do
 
          r <- ask $     requirements
                   >>   (topForm sname  seek  size
-                  .<|>. wcached key1 0 (showBuffer context)
-                  .<**. td ! customAttribute "data-role" "bottom" <<< userFormOrName1)
+                  <|> wcached key1 0 (showBuffer context)
+                  <** td ! customAttribute "data-role" "bottom" <<< userFormOrName1)
 
          case r of
                 Menu       -> do
@@ -381,9 +398,10 @@ getChunk  context  = do
 parpendicular= "Parpendicular Universes"
 --listStories :: [(String,Int)] -> View Html IO  String
 
+frontpage :: FlowM Html IO ()
 frontpage= do
    setHeader $ appheader parpendicular
-   ask . normalize $ (El.div ! At.style "word-wrap:break-word;text-align:center"
+   ask  $ (El.div ! At.style "word-wrap:break-word;text-align:center"
       << (p << b  "==/////=="
       <> h3 <<  b  "ParpendicularUniverses.com"
       <> h4  "The best infotainment for commuters, non crionized hibernants and in-transit cargo ship crews"
@@ -453,21 +471,16 @@ showBuffer  context =
 --         <<( (li ! class_ "ui-pagination-prev" $ a ! href(fromString . ret $ Seek seekbn) $ "Prev")
 --         <>  (li ! class_ "ui-pagination-next" $ a ! href(fromString . ret $ Seek seekfw) $ "Next")
 --           )
-     wrap ret=  btag "span"
-                 [("data-role" , "content")
-                 ,("swipeleft" , "$.mobile.changePage( '" <> (ret (Seek seekbn)) <> "', { transition: 'slide' } )")
-                 ,("swiperight", "$.mobile.changePage( '" <> (ret (Seek seekfw)) <> "', { transition: 'slide', reverse: true } )")]
+     wrap ret=  El.span
+                 ! customAttribute "data-role"  "content"
+                 ! customAttribute "swipeleft"  ("$.mobile.changePage( '" <> (fromString $ ret (Seek seekbn)) <> "', { transition: 'slide' } )")
+                 ! customAttribute "swiperight" ("$.mobile.changePage( '" <> (fromString $ ret (Seek seekfw)) <> "', { transition: 'slide', reverse: true } )")
 
-                 (E.encodeUtf8 formatbuf)
---             <> btag "script" []
---                  ("$(document).bind('pageinit',function(){\
---                  \ $(document).bind('swipeleft' , function(){ $.mobile.changePage( '" <> (B.pack $ ret (Seek seekbn)) <> "', { transition: 'slide' } )});\
---                   \$(document).bind('swiperight', function(){ $.mobile.changePage( '" <> (B.pack $ ret (Seek seekfw)) <> "', { transition: 'slide', reverse: true } )})\
---                  \ })")
-     -- <> toByteString (jqueryMobilePagination ret)
+                 << formatbuf
 
 
-   in  links  .<|>. (returning  wrap )  .<|>. links
+
+   in  links  <|> (returning  wrap )  <|> links
 
 
 myURL="parpendicularuniverses.com"
@@ -497,14 +510,14 @@ showMailBuff context chunk user=
      a ! href(fromString $ myURL++ "/mail?"++user) << (El.span "confirm your mail")
 
 setMail ref context=  do
-  mail <- ask $ wform(normalize $ p "You will receive just five blocks unless you ask for more"
+  mail <- ask $ wform( p "You will receive just five blocks unless you ask for more"
               ++> getString (Just "Enter your mail") <** submitButton "submit")  <! [("data-ajax","false")]
   (chunk,seekit,size)  <- liftIO $ getChunk context
   UC{..} <- atomic $ readDBRef ref     `onNothing` error "setMail: user context not found"
   let xhtml =  showMailBuff context (E.encodeUtf8 chunk) ucName
   let message = toByteString xhtml
   liftIO $ ssendmail "ptueba" "agocorona@gmail.com" "title" message
-  ask $ El.span "The mail has been sent to you" .++>. wlink () ( El.span "click here")
+  ask $ El.span "The mail has been sent to you" ++> wlink () ( El.span "click here")
   let newc = context{byMail= Just mail, confirmed= False, seek= seek context + size}
   atomic $ do
     uc@UC{..} <- readDBRef ref `onNothing` error "showStories1: not found user context"
@@ -543,13 +556,14 @@ mail= do
      let xhtml = showMailBuff context (E.encodeUtf8 chunk) user
      let message = toByteString xhtml
      liftIO $ ssendmail "ptueba" "agocorona@gmail.com" "title"  message
-     ask . normalize $ El.span "The mail has been sent to you" ++> wlink () ( El.span  "click here")
+     ask $ El.span "The mail has been sent to you" ++> wlink () ( El.span  "click here")
      showStories
 
 
 
 atomic= liftIO . atomically
---admin :: FlowM Html  IO ()
+
+admin :: FlowM Html  IO ()
 admin= do
      let admintext= "Administration"
          adcontstr= "Edit the content of an story"
@@ -557,30 +571,30 @@ admin= do
          delrelstr= "Delete a Story"
          gnconfstr= "Configuration"
 
-     setHeader $ \c -> appheader admintext
-        $  btag "h1" [("align", "center")] (B.pack admintext)
-        <> btag "script" [("src","http://js.nicedit.com/nicEdit-latest.js")
-                          ,("type", "text/javascript")] B.empty
-        <> btag "script" [("type","text/javascript")]  (B.pack  "bkLib.onDomLoaded(nicEditors.allTextAreas)")
-        <> c
+     setHeader $ \c -> appheader admintext $ do
+        h1 ! At.style "align:center" << admintext
+        script ! src "http://js.nicedit.com/nicEdit-latest.js"
+               ! type_  "text/javascript" $ mempty
+        script ! At.type_ "text/javascript" $  "bkLib.onDomLoaded(nicEditors.allTextAreas)"
+        c
 
      setTimeouts 0 0
 
      u <- loginAsAdmin
 
 
-     op <- ask . normalize $    p <<< wlink ("edit" :: String) (p adcontstr)
-                            <|> p <<< wlink "add"  (p addrelstr)
-                            <|> p <<< wlink "del"  (p delrelstr)
-                            <|> p <<< wlink "conf" (p gnconfstr)
-                            <++ toHtml (a ! href "/" << (El.span "exit from Administration"))
+     op <- ask  $   p <<< wlink ("edit" :: String) (p adcontstr)
+                    <|> p <<< wlink "add"  (p addrelstr)
+                    <|> p <<< wlink "del"  (p delrelstr)
+                    <|> p <<< wlink "conf" (p gnconfstr)
+                    <++ toHtml (a ! href "/" << (El.span "exit from Administration"))
 
 
      case op of
 
       "edit" -> do
          stories <- readStories
-         r <- ask $ homelink .|+|. h3 ! At.style "text-align:center" << adcontstr .++>.  listStories1 stories
+         r <- ask $ homelink |+| h3 ! At.style "text-align:center" << adcontstr ++>  listStories1 stories
          case r of
           (Just _,_)  -> admin
           (_,Just hist)-> do
@@ -588,14 +602,14 @@ admin= do
            Story _ content <- atomic (readDBRef ref) `onNothing` (error $ "not found: "++ hist)
 
            mr <- ask $  homelink
-                    .|+|. wform ( h3 ! At.style "text-align:center" << adcontstr
-                               ++> getMultilineText (concatMap (\s -> T.unpack s ++ ">>>") $ V.toList  content) <! [("rows", "30"), ("style", "width:80%")]
+                    |+| wform ( h3 ! At.style "text-align:center" << adcontstr
+                               ++> getMultilineText ( T.toStrict . T.concat . map (\s ->  s <> ">>>") $ V.toList  content) <! [("rows", "30"), ("style", "width:80%")]
                                <* br ++> submitButton "submit")
                       -- <+> br +> homelink
            case mr of
             (_,Just ncontent) -> do
 
-               liftIO $ writeFile (storiesPath ++  hist) $  hist ++ "\r\n" ++ ncontent
+               liftIO $ TIO.writeFile (storiesPath ++  hist) $  fromString hist <> "\r\n" <> ncontent
                atomic $ flushDBRef ref
             (Just _,_) -> admin
 
@@ -603,7 +617,7 @@ admin= do
          let atleast8 s= if length s <4 || or (map ( (flip elem) s) "$/,")
                 then return $ Just "Sorry. The title must have at least 4 characters, with no '$' ',' or '/'"
                 else return Nothing
-         r <- ask $ homelink .|+|. wform ( h3 << addrelstr ++> br ++>
+         r <- ask $ homelink |+| wform ( h3 << addrelstr ++> br ++>
                           ((,) <$> b "Name of the Story" ++> (p <<< getString Nothing `validate` atleast8)
                                <*> p <<< getMultilineText  "Enter the content" <!  [("rows", "30"),("style", "width:80%")]
                                <*  p <<< submitButton "submit"))
@@ -611,7 +625,7 @@ admin= do
          case r of
           (Just _,_) -> admin
           (_,Just(hist,ncontent)) -> do
-             liftIO $  writeFile (storiesPath ++  hist) $ hist++ "\r\n" ++ ncontent
+             liftIO $  TIO.writeFile (storiesPath ++  hist) $ fromString hist <> "\r\n" <> ncontent
              s <- liftIO $ getSize hist
              atomic $ do
                  mstories <- readDBRef rstories `onNothing` error "admin: stories nor found"
@@ -619,7 +633,7 @@ admin= do
 
       "del" -> do
           stories <- readStories
-          hist  <- ask $ wlink "$home" (p << b "Admin home") .<|>. listStories1  stories
+          hist  <- ask $ wlink "$home" << p << b "Admin home" <|> listStories1  stories
           if hist== "$home" then return () else do
            liftIO $ do
              atomically . writeDBRef rstories $ filter (\r-> hist /= fst r ) stories
@@ -627,8 +641,8 @@ admin= do
 
       "conf" -> do
            G{..} <- atomic $  readDBRef rconf `onNothing` (writeDBRef rconf config0 >> return config0)
-           r <- ask $ homelink
-                   .|+|. (G <$> br ++> fromStr "Number of blocks to receive " ++> getInt (Just gblockreceive)
+           r <- ask $    homelink
+                    |+| (G <$> br ++> fromStr "Number of blocks to receive " ++> getInt (Just gblockreceive)
                           <*> br ++> fromStr "Time between receives" ++> getInteger (Just gTimeBetweenBlocks))
                           <*  p <<< submitButton "submit"
            case r of
