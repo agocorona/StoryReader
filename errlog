@@ -12,3 +12,29 @@
 ,["admin","Sat Feb  9 16:23:28 Hora est\223ndar romance 2013","noscript","connect: failed (Connection refused (WSAECONNREFUSED))"]
 ,["admin","Sun Feb 10 00:36:18 Hora est\223ndar romance 2013","noscript","user error (authentication failed.)"]
 ,["admin","Sun Feb 10 16:18:19 Hora est\223ndar romance 2013","noscript","user error (authentication failed.)"]
+
+---------------------ERROR-------------------------
+TIME=Tue Nov 19 18:28:36 Hora estándar romance 2013
+
+not found
+
+USER= anon#
+
+PATH= storyrealder/()
+
+REQUEST:
+
+[("flow","1383172520"),("Host","localhost"),("Connection","keep-alive"),("Accept","text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"),("User-Agent","Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/31.0.1650.48 Safari/537.36"),("Accept-Encoding","gzip,deflate,sdch"),("Accept-Language","es-ES,es;q=0.8,en-US;q=0.6"),("Cookie","flow=1383172520")]
+
+---------------------ERROR-------------------------
+TIME=Wed Nov 20 13:26:28 Hora estándar romance 2013
+
+user interrupt
+
+USER= editor
+
+PATH= storyreader
+
+REQUEST:
+
+[("cookieuser","editor"),("flow","1383172520"),("Host","localhost"),("Connection","keep-alive"),("Cache-Control","max-age=0"),("Accept","text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"),("User-Agent","Mozilla/5.0 (Windows NT 6.2; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/31.0.1650.48 Safari/537.36"),("Accept-Encoding","gzip,deflate,sdch"),("Accept-Language","es-ES,es;q=0.8,en-US;q=0.6"),("Cookie","flow=1383172520; cookieuser=editor")]

@@ -62,9 +62,9 @@ import Control.Monad
 import System.Environment
 import Data.String
 import GHC.Conc
---import Debug.Trace
---
---(!>)= flip trace
+import Debug.Trace
+
+(!>)= flip trace
 
 justify=  flip fromMaybe
 
@@ -120,10 +120,10 @@ appheader titl c =
                    meta ! name  "Keywords" ! content "parpendicular, sci-fi"
                    meta ! name "viewport" ! content "width=device-width,initial-scale=1"
                    meta ! httpEquiv "Content-Type" ! content "text/html; charset=UTF-8"
-                   link ! rel "stylesheet" ! type_ "text/css" ! href   "http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.css"
+                   link ! rel "stylesheet" ! type_ "text/css" ! href   "http://codeorigin.jquery.com/mobile/1.3.2/jquery.mobile-1.3.2.min.css"
 --                   <> link ! rel "stylesheet" ! type_ "text/css" ! href  (fromString . linkFile $ "jquery.mobile.pagination.css")
-                   script ! src "http://code.jquery.com/jquery-1.8.2.min.js"  $ mempty
-                   script ! src "http://code.jquery.com/mobile/1.2.0/jquery.mobile-1.2.0.min.js" $ mempty
+                   script ! src "http://codeorigin.jquery.com/jquery-2.0.3.min.js"  $ mempty
+                   script ! src "http://codeorigin.jquery.com/mobile/1.3.2/jquery.mobile-1.3.2.min.js" $ mempty
 --                 script ! src (fromString . linkFile $ "jquery.mobile.pagination.js") $ mempty
 
 
@@ -131,7 +131,6 @@ appheader titl c =
 --                       <link rel="shortcut icon" href="favicon.ico" />
 
              body ! At.style "margin-left:5%;margin-right:5%" $ do
-                     El.div $ do
                               c
                               bottom
 
@@ -139,10 +138,11 @@ appheader titl c =
 bottom = El.div ! At.style "float:right" $ do
                  br
                  monitor
-                 powered
+--                 powered
 
-monitor=  a ! href "http://www.monitor.us" $
-     img
+monitor=
+ a ! href "http://www.monitor.us"
+     $ img
          ! width" 50" ! height "25"
          ! src "http://images.monitor.us/monbadges120-40.png"
          ! At.title "Monitor.Us - Free website, server & network monitoring tool"
@@ -150,9 +150,10 @@ monitor=  a ! href "http://www.monitor.us" $
 
 
 
-powered=  a ! href "http://haskell.org" $
-       img ! width "50" ! height "25"
-           ! src "haskell-logo-revolution.png"
+powered=
+ a ! href "http://haskell.org"
+   $ img ! width "50" ! height "25"
+         ! src "haskell-logo-revolution.png"
 
 
 
@@ -302,7 +303,7 @@ data Navigation= Seek Int | Menu | ByMail deriving (Typeable, Read, Show)
 daySecs= 24*60*60 :: Integer
 
 
-loginAsAdmin=    getUser (Just adminUser)
+loginAsAdmin=  getUser (Just adminUser)
                       $    El.div ! customAttribute "data-role" "page"
                       <<<  p << b  "Please login as Administrator"
                       ++>  wform userLogin  <! [("data-ajax","false")]
@@ -312,15 +313,14 @@ readStories= atomic $ readDBRef rstories `onNothing` error "showStories: stories
 showStories ::  FlowM Html IO ()
 showStories   = do
   setHeader $ appheader parpendicular
-  setTimeouts 200 0
+  setTimeouts 0 0
   loginAsAdmin
 
   showStories1
   where
   showStories1 :: FlowM Html IO ()
-  showStories1   =  do
-
-     stories <- readStories
+  showStories1 = do
+     stories <- readStories  !> "showHistories"
      user <- getCurrentUser                            -- !> "getCurrentUser"
      rUContext<- ( atomic $  newDBRef $ UC user Nothing . M.fromList . map (\(n,s) -> (n,userStorycontext0{sname=n, ref= getDBRef n})) $ stories)
      uc@UC{..} <- atomic $ readDBRef rUContext `onNothing` error "nor found user context "
@@ -333,7 +333,7 @@ showStories   = do
             return s
 
      navigate rUContext  story                      -- !> "exit the menu. going to navigate"
-     showStories1
+
 
   navigate rUContext  story= do
      uc@(UC n _ mapcontext) <- atomic $ readDBRef rUContext `onNothing` error "nor found user context "
@@ -401,21 +401,24 @@ parpendicular= "Parpendicular Universes"
 frontpage :: FlowM Html IO ()
 frontpage= do
    setHeader $ appheader parpendicular
-   ask  $ (El.div ! At.style "word-wrap:break-word;text-align:center"
-      << (p << b  "==/////=="
-      <> h3 <<  b  "ParpendicularUniverses.com"
-      <> h4  "The best infotainment for commuters, non crionized hibernants and in-transit cargo ship crews"
-      <> p  << b   "(Don't read this while maneoeuvering!)"
-      <> h4  "Zoom in your electronic advices"
-      <> p  << b  "|\\|"
-      <> p  << b  "=================       #       ================"
-      <> br)
+   ask  $(El.div ! At.style "word-wrap:break-word;text-align:center" $ do
+           p << b  "==/////=="
+           h3 <<  b  "ParpendicularUniverses.com"
+           h4  "The best infotainment for commuters, non crionized hibernants and in-transit cargo ship crews"
+           p  << b   "(Don't read this while maneoeuvering!)"
+           h4  "Zoom in your electronic advices"
+           p  << b  "|\\|"
+           p  << b  "=================       #       ================"
 
-      <> footer "Content of this service is under approval process. The software of this service is currently being designed and tested in collaboration with the parasite sofware eradication task force"
 
-      )
-      ++> wlink () (p  "Enter. Only authorized personnel")
+           footer "Content of this service is under approval process. The software of this service is currently being designed and tested in collaboration with the parasite sofware eradication task force"
+           )
+
+      ++>
+      wlink ("x" :: String) << p  "Enter. Only authorized personnel"
       <++ a ! href "/admin" << El.span "Admin"
+
+
    showStories
    where
    footer= p! At.style "font-family:courier, \"courier new\", monospace;font-size:100%;"
@@ -580,7 +583,7 @@ admin= do
 
      setTimeouts 0 0
 
-     u <- loginAsAdmin
+     loginAsAdmin
 
 
      op <- ask  $   p <<< wlink ("edit" :: String) (p adcontstr)
